@@ -46,7 +46,7 @@ CHINESE_TOPIC_RULE = """Сен "Қытай тілі" платформасыны�
 
 def send_verification_email(user_email: str, user_name: str, token: str, base_url: str):
     SENDER_EMAIL = os.getenv("SENDER_EMAIL")
-SENDER_PASSWORD = os.getenv("SENDER_PASSWORD")
+    SENDER_PASSWORD = os.getenv("SENDER_PASSWORD")
     verify_link = f"{base_url}/verify?token={token}"
     
     msg = EmailMessage()
