@@ -7,8 +7,8 @@ import os
 import sqlite3
 import hashlib
 import uuid
-import smtplib
-from email.message import EmailMessage
+import urllib.request
+import json
 from groq import Groq
 
 app = FastAPI()
@@ -44,19 +44,11 @@ GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 client = Groq(api_key=GROQ_API_KEY)
 CHINESE_TOPIC_RULE = """Сен "Қытай тілі" платформасының ИИ-тьюторысың. Тек қытай тілі тақырыбында сөйле."""
 
-def send_verification_email(user_email: str, user_name: str, token: str, base_url: str):
-    SENDER_EMAIL = os.getenv("SENDER_EMAIL")
-    SENDER_PASSWORD = os.getenv("SENDER_PASSWORD")
-    
-    if not SENDER_EMAIL or not SENDER_PASSWORD:
-        return False, "Render-де SENDER_EMAIL немесе SENDER_PASSWORD орнатылмаған!"
+# Сіздің Google Apps Script сілтемеңіз
+GAS_URL = "https://script.google.com/macros/s/AKfycbyMSEjTeQwQnG2yZUbJjiL4sBJpQ1P5Op3yv2Q4yKF_qkVP9ZiqJ5nj3xaK6FBRVhJIGg/exec"
 
+def send_verification_email(user_email: str, user_name: str, token: str, base_url: str):
     verify_link = f"{base_url}/verify?token={token}"
-    
-    msg = EmailMessage()
-    msg['Subject'] = 'Электронды поштаңызды растаңыз — Қытай тілі'
-    msg['From'] = f"Қытай тілі курсы <{SENDER_EMAIL}>"
-    msg['To'] = user_email
     
     html_content = f"""
     <!DOCTYPE html>
@@ -83,17 +75,28 @@ def send_verification_email(user_email: str, user_name: str, token: str, base_ur
     </body>
     </html>
     """
-    msg.set_content("HTML хатты көру үшін браузерді қолданыңыз.")
-    msg.add_alternative(html_content, subtype='html')
-    
+
+    payload = {
+        "to": user_email,
+        "subject": "Электронды поштаңызды растаңыз — Қытай тілі",
+        "htmlBody": html_content
+    }
+
     try:
-        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
-            server.login(SENDER_EMAIL, SENDER_PASSWORD)
-            server.send_message(msg)
-        return True, "Success"
+        req = urllib.request.Request(
+            GAS_URL,
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST"
+        )
+        with urllib.request.urlopen(req) as response:
+            res_data = json.loads(response.read().decode())
+            if res_data.get("status") == "success":
+                return True, "Success"
+            else:
+                return False, res_data.get("message", "Белгісіз қате")
     except Exception as e:
-        print(f"Email қатесі: {e}")
-        return False, str(e)
+        return False, f"GAS қатесі: {str(e)}"
 
 @app.get("/verify")
 def verify_email(token: str):
