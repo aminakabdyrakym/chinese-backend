@@ -182,7 +182,7 @@ async def handle_post(request: Request, background_tasks: BackgroundTasks):
             else:
                 return {"status": "error", "message": "Email немесе құпия сөз қате!"}
 
-        # 3. ҚҰПИЯ СӨЗДІ ҚАЛПЫНА КЕЛТІРУ (ЖАҢА)
+        # 3. ҚҰПИЯ СӨЗДІ ҚАЛПЫНА КЕЛТІРУ
         elif action == 'forgotPassword':
             email = data.get("email")
             
@@ -197,15 +197,12 @@ async def handle_post(request: Request, background_tasks: BackgroundTasks):
                 
                 user_name = user[0]
                 
-                # 8 таңбалы кездейсоқ жаңа құпия сөз жасау
                 new_password = ''.join(random.choices(string.ascii_letters + string.digits, k=8))
                 hashed_pw = hashlib.sha256(new_password.encode()).hexdigest()
                 
-                # Базадағы ескі парольді жаңасына ауыстыру
                 cursor.execute('UPDATE users SET password = ? WHERE email = ?', (hashed_pw, email))
                 conn.commit()
                 
-                # Жаңа парольді поштаға жіберу (Google Apps Script арқылы)
                 html_content = f"""
                 <div style="font-family: Arial, sans-serif; padding: 20px; text-align: center; background-color: #F4EFE6;">
                     <div style="background-color: #ffffff; padding: 30px; border-radius: 12px; max-width: 500px; margin: 0 auto; box-shadow: 0 4px 10px rgba(0,0,0,0.05);">
@@ -253,7 +250,24 @@ async def handle_post(request: Request, background_tasks: BackgroundTasks):
             finally:
                 conn.close()
 
-        # 5. ИИ ТУТОР
+        # 5. ОҚУШЫНЫ ӨШІРУ (АДМИН ҮШІН ЖАҢА ФУНКЦИЯ)
+        elif action == 'delete_user':
+            email_to_delete = data.get("email")
+            conn = sqlite3.connect('chinese_app.db', timeout=10)
+            try:
+                cursor = conn.cursor()
+                
+                # Бас әкімшіні өшіруден қорғау
+                if email_to_delete == 'bulanay04@icloud.com':
+                    return {"status": "error", "message": "Бас әкімшіні өшіруге болмайды!"}
+                
+                cursor.execute('DELETE FROM users WHERE email = ?', (email_to_delete,))
+                conn.commit()
+                return {"status": "success", "message": "Оқушы сәтті өшірілді."}
+            finally:
+                conn.close()
+
+        # 6. ИИ ТУТОР
         elif action == 'ai_tutor':
             chat_completion = client.chat.completions.create(
                 messages=[{"role": "system", "content": CHINESE_TOPIC_RULE}, {"role": "user", "content": data.get("message", "")}],
