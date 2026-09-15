@@ -47,6 +47,10 @@ CHINESE_TOPIC_RULE = """Сен "Қытай тілі" платформасыны�
 def send_verification_email(user_email: str, user_name: str, token: str, base_url: str):
     SENDER_EMAIL = os.getenv("SENDER_EMAIL")
     SENDER_PASSWORD = os.getenv("SENDER_PASSWORD")
+    
+    if not SENDER_EMAIL or not SENDER_PASSWORD:
+        return False, "Render-де SENDER_EMAIL немесе SENDER_PASSWORD орнатылмаған!"
+
     verify_link = f"{base_url}/verify?token={token}"
     
     msg = EmailMessage()
@@ -86,8 +90,10 @@ def send_verification_email(user_email: str, user_name: str, token: str, base_ur
         with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
             server.login(SENDER_EMAIL, SENDER_PASSWORD)
             server.send_message(msg)
+        return True, "Success"
     except Exception as e:
         print(f"Email қатесі: {e}")
+        return False, str(e)
 
 @app.get("/verify")
 def verify_email(token: str):
@@ -123,7 +129,6 @@ async def handle_post(request: Request, background_tasks: BackgroundTasks):
             hashed_pw = hashlib.sha256(password.encode()).hexdigest()
             token = str(uuid.uuid4())
 
-            # Егер бұл Буланай болса, автоматты түрде 'teacher' және 'Verified' береміз
             role = 'teacher' if name == 'Bulanay Yerkin' else 'student'
             status = 'Verified' if name == 'Bulanay Yerkin' else 'Pending'
 
@@ -136,7 +141,15 @@ async def handle_post(request: Request, background_tasks: BackgroundTasks):
                 
                 if role != 'teacher':
                     base_url = "https://legendary-yodel-969rwgq457x52r67-8000.app.github.dev"
-                    background_tasks.add_task(send_verification_email, email, name, token, base_url)
+                    
+                    # Хаттың сәтті жіберілгенін тексереміз
+                    is_sent, error_message = send_verification_email(email, name, token, base_url)
+                    
+                    if not is_sent:
+                        # Егер хат кетпесе, базадан өшіріп тастаймыз (қайта тіркелуге мүмкіндік беру үшін)
+                        cursor.execute('DELETE FROM users WHERE email = ?', (email,))
+                        conn.commit()
+                        return {"status": "error", "message": f"Пошта жіберу қатесі: {error_message}"}
                 
                 return {"status": "success", "message": "Тіркелу сәтті аяқталды! Поштаңызды тексеріңіз."}
             except sqlite3.IntegrityError:
@@ -166,7 +179,7 @@ async def handle_post(request: Request, background_tasks: BackgroundTasks):
             else:
                 return {"status": "error", "message": "Email немесе құпия сөз қате!"}
 
-        # 3. АДМИНГЕ ОҚУШЫЛАРДЫ ТІЗІП БЕРУ (ЖАҢА)
+        # 3. АДМИНГЕ ОҚУШЫЛАРДЫ ТІЗІП БЕРУ
         elif action == 'get_users':
             conn = sqlite3.connect('chinese_app.db', timeout=10)
             try:
