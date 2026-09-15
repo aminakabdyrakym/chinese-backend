@@ -143,7 +143,7 @@ async def handle_post(request: Request, background_tasks: BackgroundTasks):
                 conn.commit()
                 
                 if role != 'teacher':
-                    base_url = "https://legendary-yodel-969rwgq457x52r67-8000.app.github.dev"
+                    base_url = "https://chinese-backend-yurc.onrender.com"
                     
                     # Хаттың сәтті жіберілгенін тексереміз
                     is_sent, error_message = send_verification_email(email, name, token, base_url)
