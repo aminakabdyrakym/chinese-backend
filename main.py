@@ -106,7 +106,7 @@ def verify_email(token: str):
         cursor.execute('SELECT name FROM users WHERE verify_token = ?', (token,))
         user = cursor.fetchone()
         
-        frontend_url = "https://aminakabdyrakym.github.io/chinese/index.html"
+        frontend_url = "https://bubukz.vercel.app/index.html"
         
         if user:
             cursor.execute('UPDATE users SET status = "Verified" WHERE verify_token = ?', (token,))
