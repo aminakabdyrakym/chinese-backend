@@ -9,6 +9,8 @@ import hashlib
 import uuid
 import urllib.request
 import json
+import random
+import string
 from groq import Groq
 
 app = FastAPI()
@@ -145,11 +147,9 @@ async def handle_post(request: Request, background_tasks: BackgroundTasks):
                 if role != 'teacher':
                     base_url = "https://chinese-backend-yurc.onrender.com"
                     
-                    # Хаттың сәтті жіберілгенін тексереміз
                     is_sent, error_message = send_verification_email(email, name, token, base_url)
                     
                     if not is_sent:
-                        # Егер хат кетпесе, базадан өшіріп тастаймыз (қайта тіркелуге мүмкіндік беру үшін)
                         cursor.execute('DELETE FROM users WHERE email = ?', (email,))
                         conn.commit()
                         return {"status": "error", "message": f"Пошта жіберу қатесі: {error_message}"}
@@ -182,7 +182,66 @@ async def handle_post(request: Request, background_tasks: BackgroundTasks):
             else:
                 return {"status": "error", "message": "Email немесе құпия сөз қате!"}
 
-        # 3. АДМИНГЕ ОҚУШЫЛАРДЫ ТІЗІП БЕРУ
+        # 3. ҚҰПИЯ СӨЗДІ ҚАЛПЫНА КЕЛТІРУ (ЖАҢА)
+        elif action == 'forgotPassword':
+            email = data.get("email")
+            
+            conn = sqlite3.connect('chinese_app.db', timeout=10)
+            try:
+                cursor = conn.cursor()
+                cursor.execute('SELECT name FROM users WHERE email = ?', (email,))
+                user = cursor.fetchone()
+                
+                if not user:
+                    return {"status": "error", "message": "Бұл пошта жүйеде тіркелмеген!"}
+                
+                user_name = user[0]
+                
+                # 8 таңбалы кездейсоқ жаңа құпия сөз жасау
+                new_password = ''.join(random.choices(string.ascii_letters + string.digits, k=8))
+                hashed_pw = hashlib.sha256(new_password.encode()).hexdigest()
+                
+                # Базадағы ескі парольді жаңасына ауыстыру
+                cursor.execute('UPDATE users SET password = ? WHERE email = ?', (hashed_pw, email))
+                conn.commit()
+                
+                # Жаңа парольді поштаға жіберу (Google Apps Script арқылы)
+                html_content = f"""
+                <div style="font-family: Arial, sans-serif; padding: 20px; text-align: center; background-color: #F4EFE6;">
+                    <div style="background-color: #ffffff; padding: 30px; border-radius: 12px; max-width: 500px; margin: 0 auto; box-shadow: 0 4px 10px rgba(0,0,0,0.05);">
+                        <h2 style="color: #1B1B1F; margin-top: 0;">Сәлем, {user_name}!</h2>
+                        <p style="color: #4B5563; font-size: 16px;">Сіздің құпия сөзіңіз жаңартылды. Жаңа уақытша құпия сөзіңіз:</p>
+                        <div style="background-color: #F4EFE6; padding: 15px; font-size: 24px; font-weight: bold; letter-spacing: 4px; margin: 20px auto; width: fit-content; border-radius: 8px; color: #A61B29;">
+                            {new_password}
+                        </div>
+                        <p style="color: #4B5563; font-size: 14px;">Осы құпия сөзбен сайтқа кіріп, сақтап алыңыз.</p>
+                    </div>
+                </div>
+                """
+                
+                payload = {
+                    "to": email,
+                    "subject": "Жаңа құпия сөз — Қытай тілі",
+                    "htmlBody": html_content
+                }
+                
+                req = urllib.request.Request(
+                    GAS_URL,
+                    data=json.dumps(payload).encode("utf-8"),
+                    headers={"Content-Type": "application/json"},
+                    method="POST"
+                )
+                with urllib.request.urlopen(req) as response:
+                    res_data = json.loads(response.read().decode())
+                    if res_data.get("status") == "success":
+                        return {"status": "success", "message": "Жаңа құпия сөз поштаңызға жіберілді!"}
+                    else:
+                        return {"status": "error", "message": "Хат жіберу кезінде қате шықты."}
+                        
+            finally:
+                conn.close()
+
+        # 4. АДМИНГЕ ОҚУШЫЛАРДЫ ТІЗІП БЕРУ
         elif action == 'get_users':
             conn = sqlite3.connect('chinese_app.db', timeout=10)
             try:
@@ -194,7 +253,7 @@ async def handle_post(request: Request, background_tasks: BackgroundTasks):
             finally:
                 conn.close()
 
-        # 4. ИИ ТУТОР
+        # 5. ИИ ТУТОР
         elif action == 'ai_tutor':
             chat_completion = client.chat.completions.create(
                 messages=[{"role": "system", "content": CHINESE_TOPIC_RULE}, {"role": "user", "content": data.get("message", "")}],
